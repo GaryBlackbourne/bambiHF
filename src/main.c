@@ -9,15 +9,6 @@
 #include "segmentlcd_individual.h"
 #include "myfunctions.h"
 
-// msTicks systems
-volatile int msTicks;
-
-void SysTick_Handler(void)
-{
-  msTicks++;
-}
-
-
 
 int main(void)
 {

@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 #include "em_device.h"
 #include "em_chip.h"
 #include <em_gpio.h>
@@ -10,54 +11,106 @@
 #include "segmentlcd.h"
 #include "segmentlcd_individual.h"
 
-//a program által használ változók
-volatile _Bool StartGame = false; //ezzel ellenõrizzük le, hogy elkezdõdött-e a játék
-volatile uint8_t BananaCounter; //ez a banánokat számolja
-const uint8_t MaxNumOfBanana = 25; //konstans beállítása a banánok számának korlátozására
-volatile int FallingTime = 450; //ez lesz a banánok esésének az ideje, ez az alapértelmezett 450 ms-os beállítás
-volatile uint8_t SpeedLvl = 1; //a nehézségi szint alapértelmezett 1-es (a legkönnyebb szint), ezt küldi vissza az UART a számítógépnek
-volatile uint8_t BasketState; //az a változó tárolja a kosár állapotát
-volatile uint8_t rx_data; //ide várjuk az UART-ból érkezõ adatokat
-volatile _Bool rx_flag = false; //szükségünk van egy flagre amivel jelezni tudjuk azt, hogy az rx-en adat érkezett
-volatile uint32_t msTicks; //ms számláló
 
-//ezek a typedefek a tantárgy honlapján talált segmentlcd_individual projektbõl vannak, ezek szükségesek a játék mûködéséhez
+//a program Ã¡ltal hasznÃ¡l vÃ¡ltozÃ³k
+_Bool StartGame = false; 			//ezzel a flaggel ellenÅ‘rizzÃ¼k le, hogy elkezdÅ‘dÃ¶tt-e mÃ¡r a jÃ¡tÃ©k
+uint8_t BananaCounter; 				//ez a banÃ¡nokat szÃ¡molja
+const uint8_t MaxNumOfBanana = 25;  //konstans beÃ¡llÃ­tÃ¡sa a banÃ¡nok szÃ¡mÃ¡nak korlÃ¡tozÃ¡sÃ¡ra
+int FallingTime = 450;			    //ez lesz a banÃ¡nok esÃ©sÃ©nek az ideje milliszekudomban, ez az alapÃ©rtelmezett 450 ms-os beÃ¡llÃ­tÃ¡s
+uint8_t SpeedLvl = 1;			    //a nehÃ©zsÃ©gi szint alapÃ©rtelmezetten 1-es (a legkÃ¶nnyebb szint), ezt kÃ¼ldi vissza az UART a szÃ¡mÃ­tÃ³gÃ©pnek
+uint8_t BasketState;				//ez a vÃ¡ltozÃ³ tÃ¡rolja a kosÃ¡r Ã¡llapotÃ¡t
+uint8_t rx_data;					//ide vÃ¡rjuk az UART-bÃ³l Ã©rkezÅ‘ adatokat
+_Bool rx_flag = false;				//szÃ¼ksÃ©gÃ¼nk van egy flagre amivel jelezni szeretnÃ©nk azt, hogy az rx-en adat Ã©rkezett
+uint32_t msTicks;					//ms szÃ¡mlÃ¡lÃ³
+
+
+
+
+//ezek a typedefek a tantÃ¡rgy honlapjÃ¡n talÃ¡lt segmentlcd_individual projektbÅ‘l vannak
+//a jÃ¡tÃ©k mÅ±kÃ¶dÃ¶sÃ©hez a lowerCharSegments szÃ¼ksÃ©ges
 SegmentLCD_UpperCharSegments_TypeDef upperCharSegments[SEGMENT_LCD_NUM_OF_UPPER_CHARS];
 SegmentLCD_LowerCharSegments_TypeDef lowerCharSegments[SEGMENT_LCD_NUM_OF_LOWER_CHARS];
 
+
+
+
+
+
 void SysTick_Handler(void)
 {
-  msTicks++;       //SysTick megszakítás kezelõ függvény, ms-onként növeli 1-el msTicks értékét
+  msTicks++;       //SysTick megszakÃ­tÃ¡s kezelÅ‘ fÃ¼ggvÃ©ny, ms-onkÃ©nt nÃ¶veli 1-el msTicks Ã©rtÃ©kÃ©t
 }
 
-void DelayInGame(uint32_t dlyTicks) //a játék közben szükség van input kezelésre, ezért külön késleltetõ függvényt kellett ehhez létrehozni
+
+void UART0_RX_IRQHandler(void){ 			//UART0 megszakÃ­tÃ¡skezelÅ‘ fÃ¼ggvÃ©ny
+	rx_flag = true;							//rx_flaget beÃ¡llÃ­tjuk, hogy tudjunk arrÃ³l, ha megszakÃ­tÃ¡s tÃ¶rtÃ©nt, vagyis adat Ã©rkezett az UART0-ba
+	rx_data = USART_Rx(UART0); 				//ezt az adatot kiolvassuk Ã©s elmentjuk rx_data-ba
+	USART_IntClear(UART0, _USART_IF_MASK);  //tÃ¶rlÃ¼nk minden interrupt flaget
+}
+
+
+void UART0Begin(){ 							//amikor mÃ©g nem indult el a jÃ¡tÃ©k akkor, ez a fÃ¼ggvÃ©ny vÃ¡rja az UART0-tÃ³l Ã©rkezÅ‘ adatokat
+	key b;
+	  if(rx_flag){							//ha rx_flat==false, akkor ne csinÃ¡ljon semmit
+		rx_flag = false;					//egyÃ©bkÃ©nt kezeljÃ¼k le az inputot
+		b = InputHandler(rx_data);
+		  if(b == START){					//kezdje el a jÃ¡tÃ©kot ha a felhasznÃ¡lÃ³ 's' karaktert kÃ¼ldÃ¶tt
+			  if(!StartGame){
+			  GameStarted();
+			  }
+		  }
+		  if((b == PLUS) || (b == MINUS)){  //Ã¡llÃ­tsa be a sebessÃ©get, ha '+' vagy '-' karakter Ã©rkezett
+			  SetSpeed(b);
+			  USART_Tx(UART0, 0x30+SpeedLvl); //visszakÃ¼ldi az nehÃ©zsÃ©gi fokozat Ã©rtÃ©kÃ©t (0x30 a 0 ASCII kÃ³dja)
+		  }
+	  }
+}
+
+
+void UART0InGame(){ 						//jÃ¡tÃ©k kÃ¶zben ez a fÃ¼ggvÃ©ny olvassa az inputot
+	key b;
+	if(rx_flag){ 						//ha nem tÃ¶rtÃ©nt megszakÃ­tÃ¡s akkor ne csinÃ¡ljon semmit
+	  rx_flag = false; //egyÃ©bkÃ©nt pedig csak balra vagy jobbra mozoghat a kosÃ¡r, ilyenkor nem lehet Ã¡llÃ­tani a nehÃ©zsÃ©gi szintet
+	  b = InputHandler(rx_data);
+	  BasketMove(b);
+	 }
+}
+
+
+void DelayInGame(uint32_t dlyTicks) //a jÃ¡tÃ©k kÃ¶zben szÃ¼ksÃ©g van input kezelÃ©sre, ezÃ©rt kÃ¼lÃ¶n kÃ©sleltetÅ‘ fÃ¼ggvÃ©nyt kellett ehhez lÃ©trehozni
 {
   uint32_t curTicks;
   uint8_t i = 1;
-  curTicks = msTicks; //az éppen adott idõpillantban elkapott msTicks értékét el kell menteni ahhoz, hogy idõt tudjunk számolni
-  while ((msTicks - curTicks) < dlyTicks) { //dlyTicks értéknek megfelelõ ms idõt várunk (pl. dlyTicks = 500; akkor fél másodperc várakozás)
-	  if((msTicks - curTicks) > 20*i){ //20 ms-onként lehallgatjuk az inputot
-		  i++; UART0InGame();			//ez az érték megfelelõ, játék közben szinte észrevehetetlen a késletetés
+  curTicks = msTicks;				//az Ã©ppen adott idÅ‘pillantban elkapott msTicks Ã©rtÃ©kÃ©t el kell menteni ahhoz, hogy idÅ‘t tudjunk szÃ¡molni
+  while ((msTicks - curTicks) < dlyTicks) { 		//dlyTicks Ã©rtÃ©knek megfelelÅ‘ ms idÅ‘t vÃ¡runk (pl. dlyTicks = 500; akkor fÃ©l mÃ¡sodperc vÃ¡rakozÃ¡s)
+	  if((msTicks - curTicks) > 20*i){				//20 ms-onkÃ©nt lehallgatjuk az inputot
+		  i++; UART0InGame();						//ez az Ã©rtÃ©k megfelelÅ‘, jÃ¡tÃ©k kÃ¶zben szinte Ã©szrevehetetlen a kÃ©sletetÃ©s
 	  }
   }
 }
 
-void Delay(uint32_t dlyTicks) //ez a Delay függvény ugyanúgy mûködik mint az játékközbeni késleltetõ függvény, de itt nem hallgatjuk le az inputot
+
+void Delay(uint32_t dlyTicks) //ez a Delay fÃ¼ggvÃ©ny ugyanÃºgy mÅ±kÃ¶dik mint az jÃ¡tÃ©kkÃ¶zbeni kÃ©sleltetÅ‘ fÃ¼ggvÃ©ny, de itt nem hallgatjuk le az inputot
 {
   uint32_t curTicks;
   curTicks = msTicks;
   while ((msTicks - curTicks) < dlyTicks) { }
-  }
-
-
-
-void UART0_RX_IRQHandler(void){ //UART0 megszakításkezelõ függvény
-	rx_flag = true;			//rx_flaget beállítjuk, hogy tudjunk arról, ha megszakítás történt, vagyis adat érkezett az UART0-ba
-	rx_data = USART_Rx(UART0); //ezt az adatot kiolvassuk és elmentjuk rx_data-ba
-	USART_IntClear(UART0, _USART_IF_MASK); //törlünk minden interrupt flaget
 }
 
-void SetSpeed(key k){ //nehézségi szintet állítja be, attól függõen, hogy + vagy - karakter érkezett
+
+key InputHandler(uint8_t c) { //input kezelÅ‘ fÃ¼ggvÃ©ny, a karaktereknek megfelelÅ‘en tÃ©r vissza
+	switch(c){
+	case 's': return START;
+	case '+': return PLUS;
+	case '-': return MINUS;
+	case 'b': return LEFT;
+	case 'j': return RIGHT;
+	default:  return NOTHING;
+	}
+}
+
+
+void SetSpeed(key k){						//nehÃ©zsÃ©gi szintet Ã¡llÃ­tja be, attÃ³l fÃ¼ggÅ‘en, hogy + vagy - karakter Ã©rkezett
 	if(k == PLUS){
 		SpeedUp();
 	}
@@ -68,54 +121,43 @@ void SetSpeed(key k){ //nehézségi szintet állítja be, attól függõen, hogy + vagy
 		return;
 }
 
-void SpeedUp(){ //ezt hívja meg a SetSpeed függvény, ha + karakter érkezett, ilyenkor a nehézségi szintet emeljük
+
+void SpeedUp(){								//ezt hÃ­vja meg a SetSpeed fÃ¼ggvÃ©ny, ha '+' karakter Ã©rkezett, ilyenkor a nehÃ©zsÃ©gi szintet emeljÃ¼k
 	if(SpeedLvl < 4) {
-		SpeedLvl++; //néhézségi szint emelése egy fokozattal
-		FallingTime -= 80; //kevesebb lesz a FallingTime, vagyis gyorsabban fog leesni a banán
-		SegmentLCD_ARing(SpeedLvl, 1); //jelezzük a 8 szegmenses gyûrûn is, vagyis plusz egy szegmenst felkapcsolunk
-		SegmentLCD_Write("LEVEL +"); // az alfanumerikus kijelzõn is kiírjuk
+		SpeedLvl++;							//nÃ©hÃ©zsÃ©gi szint emelÃ©se egy fokozattal
+		FallingTime -= 80;					//kevesebb lesz a FallingTime, vagyis gyorsabban fog leesni a banÃ¡n
+		SegmentLCD_ARing(SpeedLvl, 1);		//jelezzÃ¼k a 8 szegmenses gyÅ±rÅ±n is, vagyis plusz egy szegmenst felkapcsolunk
+		SegmentLCD_Write("LEVEL +");		//az alfanumerikus kijelzÅ‘n is kiÃ­rjuk
 	}
 }
 
-void SlowDown(){ //ezt hívja meg a SetSpeed függvény, ha - karakter érkezett, ilyenkor a nehézségi szintet csökkentjük
+
+void SlowDown(){					    //ezt hÃ­vja meg a SetSpeed fÃ¼ggvÃ©ny, ha '-' karakter Ã©rkezett, ilyenkor a nehÃ©zsÃ©gi szintet csÃ¶kkentjÃ¼k
 	if(SpeedLvl > 1){
-		SegmentLCD_ARing(SpeedLvl, 0); //az aktuális szintet jelzõ szegmenst kikapcsoljuk
-		SpeedLvl--; //szintet csökkentünk
-		FallingTime += 80; //80 ms-mal több lesz az esési idõ, vagyis lassabban fog esni a banán
-		SegmentLCD_Write("LEVEL -"); //jelezzük az alfanumerikus kijelzõn is
+		SegmentLCD_ARing(SpeedLvl, 0);  //az aktuÃ¡lis szintet jelzÅ‘ szegmenst kikapcsoljuk
+		SpeedLvl--;					    //szintet csÃ¶kkentÃ¼nk
+		FallingTime += 80; 				//80 ms-mal tÃ¶bb lesz az esÃ©si idÅ‘, vagyis lassabban fog esni a banÃ¡n
+		SegmentLCD_Write("LEVEL -"); 	//jelezzÃ¼k az alfanumerikus kijelzÅ‘n is
 	}
 }
 
-void GameStarted(){ //ez a függvény a játék kezdeti állapotát állítja be
-	StartGame = true; //bebillenti a StartGame flaget
-	BananaCounter = 0; //nullázza azt amit csak szükséges
-	BasketState = 0;
-	SegmentLCD_Number(0);
-	SegmentLCD_Symbol(LCD_SYMBOL_COL10, 1);
-	lowerCharSegments[BasketState].d = 1; //kosár alaphelyzetben bal szélen van
-	SegmentLCD_LowerSegments(lowerCharSegments);
-	SegmentLCD_Write("READY"); //felkészíti a játékost, hogy nemsokára indul a játék
-	Delay(600);
-	SegmentLCD_Write("START");
-	Delay(400);
-	StartGame=Gaming(); //amint meghívja Gaming függvényt, elkezdõdik a játék
-}
 
-void BasketMoveLeft(){ //a kosár balra mozgását valóítja meg
-	uint8_t recent = BasketState; //a jelenlegi kosár állapotát elmentjük, hogy ki tudjuk kapcsolni a szegmenst
-	if(BasketState == 0){ //ha már nem tudunk balra menni a kosárral, akkor jobb oldalról jöjjön vissza a kosár
+void BasketMoveLeft(){								 //a kosÃ¡r balra mozgÃ¡sÃ¡t valÃ³Ã­tja meg
+	uint8_t recent = BasketState; 					 //a jelenlegi kosÃ¡r Ã¡llapotÃ¡t elmentjÃ¼k, hogy ki tudjuk kapcsolni a szegmenst
+	if(BasketState == 0){ 						 	 //ha mÃ¡r nem tudunk balra menni a kosÃ¡rral, akkor jobb oldalrÃ³l jÃ¶jjÃ¶n vissza a kosÃ¡r
 			BasketState = 3;
 		}
-		else { //egyébként lépjen egyet balra a kosár
+		else {										 //egyÃ©bkÃ©nt lÃ©pjen egyet balra a kosÃ¡r
 			BasketState -= 1;
 		}
-	lowerCharSegments[recent].d = 0; //kikapcsoluk az elõzõ állapotot
+	lowerCharSegments[recent].d = 0;				 //kikapcsoluk az elÅ‘zÅ‘ Ã¡llapotot
 	SegmentLCD_LowerSegments(lowerCharSegments);
-	lowerCharSegments[BasketState].d = 1; //és bekapcsoljuk a beállított állapotnak megfelelõ alsó szegmenst
+	lowerCharSegments[BasketState].d = 1;			 //Ã©s bekapcsoljuk a beÃ¡llÃ­tott Ã¡llapotnak megfelelÅ‘ alsÃ³ szegmenst
 	SegmentLCD_LowerSegments(lowerCharSegments);
 }
 
-void BasketMoveRight(){ //ez a függvény ugyanazo az elven mûködik, mint a BasketMoveLeft, csak ez jobbra viszi a kosarat
+
+void BasketMoveRight(){ //ez a fÃ¼ggvÃ©ny ugyanazon az elven mÅ±kÃ¶dik, mint a BasketMoveLeft(), csak ez jobbra viszi a kosarat
 	uint8_t recent = BasketState;
 	if(BasketState == 3){
 		BasketState = 0;
@@ -129,31 +171,49 @@ void BasketMoveRight(){ //ez a függvény ugyanazo az elven mûködik, mint a Basket
 	SegmentLCD_LowerSegments(lowerCharSegments);
 }
 
-void BasketMove(key Move){ //ez a függvény kapja meg a felsorolás típusú változót, melynek megfelelõen meghívja a szükséges függvényt
+
+void BasketMove(key Move){ //ez a fÃ¼ggvÃ©ny kapja meg a felsorolÃ¡s tÃ­pusÃº vÃ¡ltozÃ³t, melynek megfelelÅ‘en meghÃ­vja a szÃ¼ksÃ©ges fÃ¼ggvÃ©nyt
 if(Move == LEFT){
 	BasketMoveLeft();
-}
+	}
 if(Move == RIGHT){
 	BasketMoveRight();
-}
+	}
 }
 
-_Bool Gaming(){ //ez a függvény valósítja meg magát a játékot
-	int i = 0; //szükség van két segédváltozóra
+
+void GameStarted(){ 								//ez a fÃ¼ggvÃ©ny a jÃ¡tÃ©k kezdeti Ã¡llapotÃ¡t Ã¡llÃ­tja be
+	StartGame = true; 								//bebillenti a StartGame flaget, hogy tudjunk arrÃ³l, hogy a jÃ¡tÃ©k elkezdÅ‘dÃ¶tt
+	BananaCounter = 0; 								//minden Ã©rtÃ©ket resetelÃ¼nk
+	BasketState = 0;
+	SegmentLCD_Number(0);
+	SegmentLCD_Symbol(LCD_SYMBOL_COL10, 1);
+	lowerCharSegments[BasketState].d = 1; 			//kosÃ¡r alaphelyzetben bal szÃ©len van
+	SegmentLCD_LowerSegments(lowerCharSegments);
+	SegmentLCD_Write("READY"); 						//felkÃ©szÃ­ti a jÃ¡tÃ©kost, hogy nemsokÃ¡ra indul a jÃ¡tÃ©k
+	Delay(600);
+	SegmentLCD_Write("START");
+	Delay(400);
+	StartGame=Gaming(); //amint meghÃ­vja Gaming fÃ¼ggvÃ©nyt, elkezdÅ‘dik a jÃ¡tÃ©k, a visszatÃ©rÃ©si Ã©rtÃ©k pedig false Ã©rtÃ©kre Ã¡llÃ­tja a StartGame flaget
+}
+
+
+_Bool Gaming(){									 //ez a fÃ¼ggvÃ©ny valÃ³sÃ­tja meg magÃ¡t a jÃ¡tÃ©kot
+	int i = 0;									 //szÃ¼ksÃ©g van kÃ©t segÃ©dvÃ¡ltozÃ³ra
 	int j = 0;
+	srand((unsigned)time(NULL));				 //randomszÃ¡m generÃ¡lÃ¡sÃ¡hoz
+
 	while(BananaCounter != MaxNumOfBanana) {
-	uint8_t num = rand()%4; //random szám generálása és 4-gyel való modulálása, hogy 0,1,2 vagy 3 értéket kapjunk, hiszen csak 4 mezõn játszunk
-    lowerCharSegments[num].a = 1; //a num értéknek megfelelõ mezõben felvillan a felsõ szegmens
-    SegmentLCD_LowerSegments(lowerCharSegments); // a továbbiakban ebben a szegmensben FallingTime idõközönként fokozatosan leesik a banán
-    UART0InGame(); //itt is lehallgatjuk az UART-ot ráadásként
-    DelayInGame(FallingTime);
+	uint8_t num = rand()%4; 	  //random szÃ¡m generÃ¡lÃ¡sa Ã©s 4-gyel valÃ³ modulÃ¡lÃ¡sa, hogy 0,1,2 vagy 3 Ã©rtÃ©ket kapjunk, hiszen csak 4 mezÅ‘n jÃ¡tszunk
+    lowerCharSegments[num].a = 1; //a num Ã©rtÃ©knek megfelelÅ‘ mezÅ‘ben felvillan a felsÅ‘ szegmens
+    SegmentLCD_LowerSegments(lowerCharSegments); 		// a tovÃ¡bbiakban ebben a szegmensben FallingTime idÅ‘kÃ¶zÃ¶nkÃ©nt fokozatosan leesik a banÃ¡n
+    DelayInGame(FallingTime); 	  //itt rÃ¡adÃ¡skÃ©nt lehallgatjuk az UART-ot, attÃ³l fÃ¼ggetlenÃ¼l hogy DelayInGame() is megteszi ezt idÅ‘kÃ¶zÃ¶nkÃ©nt
     UART0InGame();
     lowerCharSegments[num].a = 0;
     SegmentLCD_LowerSegments(lowerCharSegments);
     UART0InGame();
     lowerCharSegments[num].j = 1;
     SegmentLCD_LowerSegments(lowerCharSegments);
-    UART0InGame();
     DelayInGame(FallingTime);
     UART0InGame();
     lowerCharSegments[num].j = 0;
@@ -164,77 +224,26 @@ _Bool Gaming(){ //ez a függvény valósítja meg magát a játékot
     UART0InGame();
     DelayInGame(FallingTime);
 
-	if(BasketState==num){ //ha a kosár helyzete megegyezik a banán helyzetével, akkor elkaptuk a banánt
+	if(BasketState==num){						 //ha a kosÃ¡r helyzete megegyezik a banÃ¡n helyzetÃ©vel, akkor elkaptuk a banÃ¡nt
 		i++;
-		SegmentLCD_Number(((i*100)+j)); //az elkapott banánokat pedig a jobb felsõ sarokban számoljuk, a kettõspont bal oldalán
-	}
+		SegmentLCD_Number(((i*100)+j));			 //az elkapott banÃ¡nokat pedig a jobb felsÅ‘ sarokban szÃ¡moljuk, a kettÅ‘spont bal oldalÃ¡n
+		}
+
 	else {
 		j++;
-		SegmentLCD_Number(((i*100)+j)); // a leesett banánokat is számoljuk, a kettõsponttól jobbra
-	}
+		SegmentLCD_Number(((i*100)+j));			 // a leesett banÃ¡nokat is szÃ¡moljuk, a kettÅ‘sponttÃ³l jobbra
+		}
+
     lowerCharSegments[num].p = 0;
     SegmentLCD_LowerSegments(lowerCharSegments);
     BananaCounter++;
 	}
-	lowerCharSegments[BasketState].d = 0; //kikapcsoljuk a kosarat, hogyha következõ játékot indítunk, akkor ne világítson feleslegesen plusz egy szegmens
+
+	//kikapcsoljuk az aktuÃ¡lis kosÃ¡r szegmenst, hogyha kÃ¶vetkezÅ‘ jÃ¡tÃ©kot indÃ­tunk, akkor ne vilÃ¡gÃ­tson feleslegesen plusz egy szegmens
+	lowerCharSegments[BasketState].d = 0;
 	SegmentLCD_LowerSegments(lowerCharSegments);
 	SegmentLCD_Write("ENDGAME");
-    return false; //false értékkel térünk vissza, ez azért lesz fontos, mert a StartGame flaget ez a visszatérési érték fogja nullázni
+   return false; //false Ã©rtÃ©kkel tÃ©rÃ¼nk vissza, ez azÃ©rt lesz fontos, mert a StartGame flaget ez a visszatÃ©rÃ©si Ã©rtÃ©k fogja nullÃ¡zni
 }
 
-
-key InputHandler(uint8_t c) { //input kezelõ függvény, a karaktereknek megfelelõen tér vissza
-	switch(c){
-	case 's': return START;
-	case '+': return PLUS;
-	case '-': return MINUS;
-	case 'b': return LEFT;
-	case 'j': return RIGHT;
-	default:  return NOTHING;
-	}
-}
-
-
-void ScrollText(char *scrolltext) //ez a függvény használaton kívül van!! talán nem is érdemes használni
-{
-  int  i, len;
-  char buffer[8];
-
-  buffer[7] = 0x00;
-  len       = strlen(scrolltext);
-  if (len < 7) {
-    return;
-  }
-  for (i = 0; i < (len - 7); i++) {
-    memcpy(buffer, scrolltext + i, 7);
-    SegmentLCD_Write(buffer);
-    Delay(400);
-  }
-}
-
-void UART0Begin(){ //amikor még nem indult el a játék akkor, ez a függvény várja az UART0-tól érkezõ adatokat
-	key b;
-	  if(rx_flag){ //ha rx_flat==false, akkor ne csináljon semmit
-		rx_flag = false; //egyébként kezeljük le az inputot
-		b = InputHandler(rx_data);
-		  if(b == START){ //kezdje el a játékot!
-			  if(!StartGame){
-			  GameStarted();
-			  }
-		  }
-		  if((b == PLUS) || (b == MINUS)){ //állítsa be a sebességet!
-			  SetSpeed(b);
-			  USART_Tx(UART0, 0x30+SpeedLvl); //visszaküldi az nehézségi fokozat értékét (0x30 a 0 ASCII kódja, ez is egy megoldás)
-		  }
-}
-}
-
-void UART0InGame(){ //játék közben ez a függvény olvassa az inputot
-	key b;
-		  if(rx_flag){ //ha nem történt megszakítás akkor ne csináljon semmit
-			  rx_flag = false; //egyébként pedig csak balra vagy jobbra mozoghat a kosár, ilyenkor nem lehet állítani a nehézégi szintet
-			  b = InputHandler(rx_data);
-			  BasketMove(b);
-		  }
-	  }
 

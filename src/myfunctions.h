@@ -10,18 +10,17 @@
 
 #include <stdint.h>
 
-//felsorolás típust hozunk létre az inputok kezeléséhez
+//felsorolÃ¡s tÃ­pust hozunk lÃ©tre az inputok kezelÃ©sÃ©hez
 enum key {PLUS, MINUS, START, LEFT, RIGHT, NOTHING};
 typedef enum key key;
 
-//függvények fejlécei
+//fÃ¼ggvÃ©nyek fejlÃ©cei
 void SysTick_Handler(void);
 void DelayInGame(uint32_t);
 void Delay(uint32_t);
 void SpeedUp(void);
 void SlowDown(void);
 void GameStarted();
-void ScrollText(char*);
 key InputHandler(uint8_t);
 void UART0_RX_IRQHandler(void);
 void UART0InGame();
@@ -34,3 +33,4 @@ _Bool Gaming();
 
 
 #endif /* SRC_MYFUNCTIONS_H_ */
+

@@ -16,7 +16,8 @@
 _Bool StartGame = false; 			//ezzel a flaggel ellenőrizzük le, hogy elkezdődött-e már a játék
 uint8_t BananaCounter; 				//ez a banánokat számolja
 const uint8_t MaxNumOfBanana = 25;  //konstans beállítása a banánok számának korlátozására
-int FallingTime = 450;			    //ez lesz a banánok esésének az ideje milliszekudomban, ez az alapértelmezett 450 ms-os beállítás
+int FallingTime = 360;			    //ez lesz a banánok esésének az ideje milliszekudomban, ez az alapértelmezett 450 ms-os beállítás
+const int RipeningTime = 500;		//érési idő
 uint8_t SpeedLvl = 1;			    //a nehézségi szint alapértelmezetten 1-es (a legkönnyebb szint), ezt küldi vissza az UART a számítógépnek
 uint8_t BasketState;				//ez a változó tárolja a kosár állapotát
 uint8_t rx_data;					//ide várjuk az UART-ból érkező adatokat
@@ -57,9 +58,7 @@ void UART0Begin(){ 							//amikor még nem indult el a játék akkor, ez a füg
 		  if(b == START){					//kezdje el a játékot ha a felhasználó 's' karaktert küldött
 			  if(!StartGame){
 			  GameStarted();
-			  StartGame = true;
-			  Gaming();
-			  StartGame=false;  //amint meghívja Gaming függvényt, elkezdődik a játék, a visszatérési érték pedig false értékre állítja a StartGame flaget (módosítva?)
+			  StartGame=Gaming(); //amint meghívja Gaming függvényt, elkezdődik a játék, a visszatérési érték pedig false értékre állítja a StartGame flaget
 			  }
 		  }
 		  if((b == PLUS) || (b == MINUS)){  //állítsa be a sebességet, ha '+' vagy '-' karakter érkezett
@@ -194,9 +193,9 @@ void GameStarted(){ 								//ez a függvény a játék kezdeti állapotát áll
 	lowerCharSegments[BasketState].d = 1; 			//kosár alaphelyzetben bal szélen van
 	SegmentLCD_LowerSegments(lowerCharSegments);
 	SegmentLCD_Write("READY"); 						//felkészíti a játékost, hogy nemsokára indul a játék
-	Delay(600);
+	Delay(800);
 	SegmentLCD_Write("START");
-	Delay(400);
+	Delay(500);
 }
 
 
@@ -209,7 +208,7 @@ _Bool Gaming(){									 //ez a függvény valósítja meg magát a játékot
 	uint8_t num = rand()%4; 	  //random szám generálása és 4-gyel való modulálása, hogy 0,1,2 vagy 3 értéket kapjunk, hiszen csak 4 mezőn játszunk
     lowerCharSegments[num].a = 1; //a num értéknek megfelelő mezőben felvillan a felső szegmens
     SegmentLCD_LowerSegments(lowerCharSegments); 		// a továbbiakban ebben a szegmensben FallingTime időközönként fokozatosan leesik a banán
-    DelayInGame(FallingTime); 	  //itt ráadásként lehallgatjuk az UART-ot, attól függetlenül hogy DelayInGame() is megteszi ezt időközönként
+    DelayInGame(RipeningTime); 	  //itt ráadásként lehallgatjuk az UART-ot, attól függetlenül hogy DelayInGame() is megteszi ezt időközönként
     UART0InGame();
     lowerCharSegments[num].a = 0;
     SegmentLCD_LowerSegments(lowerCharSegments);

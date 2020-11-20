@@ -57,6 +57,9 @@ void UART0Begin(){ 							//amikor még nem indult el a játék akkor, ez a füg
 		  if(b == START){					//kezdje el a játékot ha a felhasználó 's' karaktert küldött
 			  if(!StartGame){
 			  GameStarted();
+			  StartGame = true;
+			  Gaming();
+			  StartGame=false;  //amint meghívja Gaming függvényt, elkezdődik a játék, a visszatérési érték pedig false értékre állítja a StartGame flaget (módosítva?)
 			  }
 		  }
 		  if((b == PLUS) || (b == MINUS)){  //állítsa be a sebességet, ha '+' vagy '-' karakter érkezett
@@ -194,7 +197,6 @@ void GameStarted(){ 								//ez a függvény a játék kezdeti állapotát áll
 	Delay(600);
 	SegmentLCD_Write("START");
 	Delay(400);
-	StartGame=Gaming(); //amint meghívja Gaming függvényt, elkezdődik a játék, a visszatérési érték pedig false értékre állítja a StartGame flaget
 }
 
 
